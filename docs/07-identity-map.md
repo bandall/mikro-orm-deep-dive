@@ -118,7 +118,74 @@ const authors = await em.find(Author, {}, {
 // 같은 PK를 다시 조회하면 다른 객체 반환
 ```
 
-## 7.6 Identity Map 관련 함정
+## 7.6 비-PK 조회 시 병합 우선순위
+
+PK 조회는 Identity Map 캐시를 즉시 반환하지만, **비-PK 조회**는 DB 쿼리를 실행한 뒤 결과를 Identity Map과 **병합**한다.
+
+```mermaid
+sequenceDiagram
+    participant Code as 코드
+    participant IM as Identity Map
+    participant DB as 데이터베이스
+
+    Code->>IM: findOne(Author, 1) — PK 조회
+    IM-->>Code: 캐시 반환 (DB 쿼리 없음)
+
+    Code->>Code: author.name = 'Changed'
+    Note over IM: 메모리만 변경, DB 미반영
+
+    Code->>DB: find(Author, { email: '...' }) — 비-PK 조회
+    DB-->>IM: 결과 반환 (name: 'Original')
+    IM->>IM: 같은 PK 존재 → 메모리 값 우선
+    IM-->>Code: author.name = 'Changed' (DB 값 무시)
+```
+
+### 병합 규칙
+
+| 상황 | 동작 |
+|------|------|
+| 비-PK 조회 결과에 이미 Identity Map에 있는 PK | **메모리 값 우선** (DB 값 무시) |
+| `refresh: true` 옵션으로 조회 | **DB 값 강제 반영** (메모리 변경 소실) |
+| 비-PK 조회 시 flush 발생 여부 | **발생하지 않음** (병합만 수행) |
+
+```typescript
+const em = orm.em.fork();
+const author = await em.findOneOrFail(Author, 1);
+author.name = 'Changed';  // flush 안 함 — DB에는 'Original'
+
+// 비-PK 조건 조회 → DB 쿼리 실행 → Identity Map과 병합
+const authors = await em.find(Author, { email: 'test@test.com' });
+const found = authors.find(a => a.id === 1);
+found.name;  // 'Changed' ← Identity Map의 메모리 값이 우선
+
+// refresh: true → DB 값으로 강제 덮어쓰기
+const fresh = await em.findOneOrFail(Author, 1, { refresh: true });
+fresh.name;  // 'Original' ← 메모리 변경 소실됨
+```
+
+### 다른 EM에서 DB 변경 후 stale 데이터
+
+```typescript
+const em1 = orm.em.fork();
+const em2 = orm.em.fork();
+
+const a1 = await em1.findOneOrFail(Author, 1);  // name = 'Original'
+
+// em2에서 변경
+const a2 = await em2.findOneOrFail(Author, 1);
+a2.name = 'Updated';
+await em2.flush();
+
+// em1에서 재조회 → Identity Map 캐시 반환 (stale)
+const stale = await em1.findOneOrFail(Author, 1);
+stale.name;  // 'Original' ← DB에는 'Updated'
+
+// refresh: true로 해결
+const fresh = await em1.findOneOrFail(Author, 1, { refresh: true });
+fresh.name;  // 'Updated'
+```
+
+## 7.7 Identity Map 관련 함정
 
 ### 함정 1: nativeDelete 후 find
 
@@ -151,6 +218,11 @@ console.log(same.name);  // 'Kim' ← Identity Map 캐시!
 | 9-3 | nativeDelete 후 같은 EM find → Identity Map에 남아있음 |
 | 11-6 | disableIdentityMap → Identity Map 미등록 확인 |
 | 11-7 | disableIdentityMap 엔티티 수정 → flush해도 UPDATE 안 됨 |
+| 13-1 | PK 조회 → Identity Map 캐시 히트 (같은 인스턴스) |
+| 13-2 | 메모리 변경 후 비-PK 조회 → Identity Map 값 우선 |
+| 13-4 | refresh: true → DB 값으로 강제 덮어쓰기 |
+| 13-5 | 다른 EM의 DB 변경 후 재조회 → stale 캐시 반환, refresh로 해결 |
+| 13-6 | 비-PK 조회 시 flush 발생하지 않음 (병합만 수행) |
 
 ---
 

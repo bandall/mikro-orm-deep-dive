@@ -1,6 +1,6 @@
 # MikroORM v7 — NestJS 실전 가이드
 
-> 109개 테스트로 검증한 실제 동작 기반의 학습 문서
+> 120개 테스트로 검증한 실제 동작 기반의 학습 문서
 
 ## Part 1. 핵심 개념
 
@@ -64,6 +64,6 @@
 | #                                   | 주제                           |
 | ----------------------------------- | ---------------------------- |
 | [A](./appendix-a-jpa-cheatsheet.md) | Spring JPA <-> MikroORM 치트시트 |
-| [B](./appendix-b-test-results.md)   | 테스트 결과 요약 (109개)             |
+| [B](./appendix-b-test-results.md)   | 테스트 결과 요약 (120개)             |
 
 

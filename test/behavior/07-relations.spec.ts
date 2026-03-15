@@ -125,7 +125,7 @@ describe('7. 관계(Relation) INSERT/DELETE', () => {
 
     // test
     const em = orm.em.fork();
-    const bookRepo = em.getRepository(BookEntity) as BookRepository;
+    const bookRepo = em.getRepository(BookEntity) as unknown as BookRepository;
     await bookRepo.insertMany([
       { title: 'Bulk 1', author: authorId },
       { title: 'Bulk 2', author: authorId },

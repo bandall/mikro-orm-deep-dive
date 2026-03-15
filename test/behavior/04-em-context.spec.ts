@@ -71,7 +71,7 @@ describe('4. EntityManager 컨텍스트 해결', () => {
 
   it('4-4: RequestContext 안에서 repository.getEntityManager() → 같은 프록시 반환 (내부적으로 fork EM 사용)', async () => {
     await RequestContext.create(orm.em, async () => {
-      const repo = orm.em.getRepository(AuthorEntity) as AuthorRepository;
+      const repo = orm.em.getRepository(AuthorEntity) as unknown as AuthorRepository;
       const repoEm = repo.getEntityManager();
       // [발견] repo.getEntityManager()은 같은 글로벌 EM 프록시를 반환
       // 하지만 내부적으로 getContext()를 통해 fork EM에서 실행됨
@@ -86,7 +86,7 @@ describe('4. EntityManager 컨텍스트 해결', () => {
   it('4-5: DI 주입 EM vs repository EM (RequestContext 내) → 같은 fork EM', async () => {
     await RequestContext.create(orm.em, async () => {
       const diEm = module.get(MysqlEntityManager);
-      const repo = orm.em.getRepository(AuthorEntity) as AuthorRepository;
+      const repo = orm.em.getRepository(AuthorEntity) as unknown as AuthorRepository;
       const repoEm = repo.getEntityManager();
 
       // 둘 다 RequestContext를 통해 같은 fork EM을 사용

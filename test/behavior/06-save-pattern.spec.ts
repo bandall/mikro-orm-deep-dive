@@ -29,7 +29,7 @@ describe('6. save() 패턴 검증', () => {
 
   it('6-1: 새 엔티티 → save() → INSERT', async () => {
     const em = orm.em.fork();
-    const repo = em.getRepository(AuthorEntity) as AuthorRepository;
+    const repo = em.getRepository(AuthorEntity) as unknown as AuthorRepository;
     const author = em.create(AuthorEntity, { name: 'Save New' });
     await repo.save(author);
 
@@ -45,7 +45,7 @@ describe('6. save() 패턴 검증', () => {
     await seed.flush();
 
     const em = orm.em.fork();
-    const repo = em.getRepository(AuthorEntity) as AuthorRepository;
+    const repo = em.getRepository(AuthorEntity) as unknown as AuthorRepository;
     const author = await em.findOneOrFail(AuthorEntity, { name: 'Before Save' });
     author.name = 'After Save';
     await repo.save(author);
@@ -61,7 +61,7 @@ describe('6. save() 패턴 검증', () => {
     await seed.flush();
 
     const em = orm.em.fork();
-    const repo = em.getRepository(AuthorEntity) as AuthorRepository;
+    const repo = em.getRepository(AuthorEntity) as unknown as AuthorRepository;
     const author = await em.findOneOrFail(AuthorEntity, { name: 'NoChange' });
     await repo.save(author); // 변경 없음
 
@@ -82,7 +82,7 @@ describe('6. save() 패턴 검증', () => {
 
   it('6-5: 바깥 트랜잭션 없이 save() → 자체 트랜잭션으로 commit', async () => {
     const em = orm.em.fork();
-    const repo = em.getRepository(AuthorEntity) as AuthorRepository;
+    const repo = em.getRepository(AuthorEntity) as unknown as AuthorRepository;
     const author = em.create(AuthorEntity, { name: 'Self Tx Save' });
     await repo.save(author);
 

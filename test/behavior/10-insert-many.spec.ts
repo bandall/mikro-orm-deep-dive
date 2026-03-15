@@ -28,7 +28,7 @@ describe('10. insertMany()', () => {
 
   it('10-1: insertMany → DB에 INSERT, Identity Map에는 없음', async () => {
     const em = orm.em.fork();
-    const repo = em.getRepository(AuthorEntity) as AuthorRepository;
+    const repo = em.getRepository(AuthorEntity) as unknown as AuthorRepository;
     await repo.insertMany([
       { name: 'Bulk 1' },
       { name: 'Bulk 2' },
@@ -50,7 +50,7 @@ describe('10. insertMany()', () => {
 
   it('10-2: insertMany 후 find → DB에서 새로 Identity Map 등록', async () => {
     const em = orm.em.fork();
-    const repo = em.getRepository(AuthorEntity) as AuthorRepository;
+    const repo = em.getRepository(AuthorEntity) as unknown as AuthorRepository;
     await repo.insertMany([{ name: 'FindAfter' }]);
 
     const found = await em.findOne(AuthorEntity, { name: 'FindAfter' });
@@ -70,7 +70,7 @@ describe('10. insertMany()', () => {
 
     try {
       await em.transactional(async (txEm) => {
-        const repo = txEm.getRepository(AuthorEntity) as AuthorRepository;
+        const repo = txEm.getRepository(AuthorEntity) as unknown as AuthorRepository;
         await repo.insertMany([{ name: 'Rollback Bulk' }]);
         throw new Error('Force rollback');
       });
@@ -85,7 +85,7 @@ describe('10. insertMany()', () => {
 
   it('10-4: 500건 chunk insertMany 반복 → 모두 정상 INSERT', async () => {
     const em = orm.em.fork();
-    const repo = em.getRepository(AuthorEntity) as AuthorRepository;
+    const repo = em.getRepository(AuthorEntity) as unknown as AuthorRepository;
 
     const totalItems = 1200;
     const chunkSize = 500;

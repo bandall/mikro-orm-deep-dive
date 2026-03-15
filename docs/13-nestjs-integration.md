@@ -223,6 +223,66 @@ class CronService {
 
 > SQS 컨슈머, 이벤트 핸들러 등도 동일하다. HTTP 요청 밖이라면 반드시 EM 컨텍스트를 직접 생성해야 한다.
 
+### 중첩 컨텍스트 주의사항
+
+`@CreateRequestContext()`와 `RequestContext.create()`는 **최상위 메서드에서만** 사용해야 한다. 중첩하면 내부 RC가 별도 fork를 생성하여 데이터 불일치가 발생한다.
+
+```typescript
+// ❌ 중첩 금지 — 내부 RC는 별도 fork, 외부와 Identity Map 격리
+@CreateRequestContext()
+async outer() {
+  const author = orm.em.create(Author, { name: 'Outer' });
+  orm.em.persist(author);
+
+  await this.inner();  // inner에도 @CreateRequestContext()가 있으면?
+  // → inner는 별도 fork → outer의 엔티티를 모름
+  // → inner의 flush는 outer의 변경사항을 포함하지 않음
+}
+
+@CreateRequestContext()  // ← 중첩: 별도 fork 생성
+async inner() {
+  // 여기서 flush해도 outer의 author는 DB에 반영 안 됨
+}
+```
+
+```typescript
+// ✅ 올바른 패턴 — 최상위에서만 @CreateRequestContext()
+@CreateRequestContext()
+async handler() {
+  await this.step1();  // 일반 메서드 — 같은 RC의 fork EM 공유
+  await this.step2();  // 일반 메서드
+}
+
+async step1() { /* RC 데코레이터 없음 */ }
+async step2() { /* RC 데코레이터 없음 */ }
+```
+
+### em.transactional() vs em.fork().transactional()
+
+| 방식 | Identity Map | 용도 |
+|------|-------------|------|
+| `em.transactional()` | **같은 EM** 공유 | 기존 엔티티의 변경을 트랜잭션으로 감쌀 때 |
+| `em.fork().transactional()` | **별도 EM** (격리) | 독립적인 작업을 격리할 때 |
+
+```typescript
+const author = await em.findOneOrFail(Author, 1);
+author.name = 'Changed';
+
+// em.transactional → 같은 Identity Map
+await em.transactional(async (txEm) => {
+  const same = await txEm.findOneOrFail(Author, 1);
+  same === author;   // true — 같은 인스턴스
+  same.name;         // 'Changed' — 메모리 변경 보임
+});
+
+// em.fork().transactional → 별도 Identity Map
+await em.fork().transactional(async (forkedEm) => {
+  const separate = await forkedEm.findOneOrFail(Author, 1);
+  separate === author;  // false — 다른 인스턴스
+  separate.name;        // DB 값 (fork에서 새로 로드)
+});
+```
+
 ## 13.5 Read Replica 구성
 
 ```mermaid
@@ -416,6 +476,11 @@ src/
 | 9-5 | E2E: 요청 간 데이터 격리 — POST commit 후 GET으로 즉시 조회 가능 |
 | 11-1~5 | TransactionalExplorer — em 자동 주입 |
 | 11-15 | getConnection('read'/'write') API 확인 |
+| 14-1 | 중첩 RC → 내부/외부 RC는 별도 fork (EM 인스턴스 다름) |
+| 14-2 | 중첩 RC — 내부 flush가 외부 변경사항에 영향 없음 |
+| 14-3 | 중첩 RC — 내부에서 생성한 엔티티가 외부 Identity Map에 없음 |
+| 14-4 | em.fork().transactional → 별도 Identity Map (원본 영향 없음) |
+| 14-5 | em.transactional → 같은 Identity Map 공유 (같은 인스턴스) |
 
 ---
 

@@ -1,8 +1,8 @@
-# 부록 B. 테스트 결과 요약 (109개)
+# 부록 B. 테스트 결과 요약 (120개)
 
 > 모든 문서의 "검증된 동작"은 아래 테스트로 확인되었다.
 
-## B.1 behavior 테스트 (83개)
+## B.1 behavior 테스트 (94개)
 
 ### 01-persist.spec.ts — persist & flush
 
@@ -151,6 +151,27 @@
 | 12-5 | Case D: Inner 성공 후 Outer 자체 catch → commit 성공 | ✅ |
 | 12-6 | em.transactional에서 예외 catch → commit 성공 | ✅ |
 | 12-7 | em.transactional 예외 미처리 → 전체 rollback (대조군) | ✅ |
+
+### 13-identity-map-merge.spec.ts — Identity Map 병합 우선순위
+
+| # | 테스트 | 결과 |
+|---|--------|------|
+| 13-1 | PK 조회 → Identity Map 캐시 히트 (같은 인스턴스) | ✅ |
+| 13-2 | 메모리 변경 후 비-PK 조회 → Identity Map 값 우선 | ✅ |
+| 13-3 | 비-PK 조회 — DB 조건과 메모리 값이 다를 때 메모리 값 유지 | ✅ |
+| 13-4 | refresh: true → DB 값으로 강제 덮어쓰기 (메모리 변경 소실) | ✅ |
+| 13-5 | 다른 EM에서 DB 변경 후 재조회 → stale 캐시, refresh로 해결 | ✅ |
+| 13-6 | 비-PK 조회 시 flush 발생하지 않음 (병합만 수행) | ✅ |
+
+### 14-nested-context.spec.ts — 중첩 컨텍스트
+
+| # | 테스트 | 결과 |
+|---|--------|------|
+| 14-1 | 중첩 RC → 내부/외부 RC는 별도 fork (EM 인스턴스 다름) | ✅ |
+| 14-2 | 중첩 RC — 내부 flush가 외부 변경사항에 영향 없음 | ✅ |
+| 14-3 | 중첩 RC — 내부에서 생성한 엔티티가 외부 Identity Map에 없음 | ✅ |
+| 14-4 | em.fork().transactional → 별도 Identity Map (원본 영향 없음) | ✅ |
+| 14-5 | em.transactional → 같은 Identity Map 공유 (같은 인스턴스) | ✅ |
 
 ## B.2 jpa-compat 테스트 (26개)
 
