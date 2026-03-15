@@ -65,6 +65,5 @@
 | ----------------------------------- | ---------------------------- |
 | [A](./appendix-a-jpa-cheatsheet.md) | Spring JPA <-> MikroORM 치트시트 |
 | [B](./appendix-b-test-results.md)   | 테스트 결과 요약 (104개)             |
-| [99](./99-pluglink-action-plan.md)  | pluglink-backend 적용 액션 플랜     |
 
 
