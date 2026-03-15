@@ -409,6 +409,11 @@ src/
 | 4-7 | DI 주입 EM === orm.em (프록시 하나), RC 안에서 같은 fork |
 | 8-1~2 | RequestContext — 요청별 EM 격리 |
 | 8-3 | 글로벌 EM 직접 사용 → allowGlobalContext=false이면 에러 |
+| 9-1 | E2E: POST 요청 → registerRequestContext가 자동 fork → INSERT 성공 |
+| 9-2 | E2E: GET 요청 → 자동 fork EM으로 SELECT 성공 |
+| 9-3 | E2E: 연속 요청 → 각 요청이 독립된 Identity Map 사용 |
+| 9-4 | E2E: 목록 조회가 이전 요청의 Identity Map에 영향받지 않음 |
+| 9-5 | E2E: 요청 간 데이터 격리 — POST commit 후 GET으로 즉시 조회 가능 |
 | 11-1~5 | TransactionalExplorer — em 자동 주입 |
 | 11-15 | getConnection('read'/'write') API 확인 |
 

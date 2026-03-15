@@ -7,6 +7,7 @@ import { AuthorEntity } from './entities/author.entity';
 import { BookEntity } from './entities/book.entity';
 import { OuterService } from './services/outer.service';
 import { InnerService } from './services/inner.service';
+import { AuthorController } from './controllers/author.controller';
 
 @Global()
 @Module({
@@ -38,6 +39,7 @@ import { InnerService } from './services/inner.service';
     OuterService,
     InnerService,
   ],
+  controllers: [AuthorController],
   exports: [MysqlEntityManager],
 })
 export class AppModule {}

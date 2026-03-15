@@ -1,8 +1,8 @@
-# 부록 B. 테스트 결과 요약 (104개)
+# 부록 B. 테스트 결과 요약 (109개)
 
 > 모든 문서의 "검증된 동작"은 아래 테스트로 확인되었다.
 
-## B.1 behavior 테스트 (78개)
+## B.1 behavior 테스트 (83개)
 
 ### 01-persist.spec.ts — persist & flush
 
@@ -91,6 +91,16 @@
 | 8-2 | RequestContext 안에서 persist (flush 없음) → DB 반영 안 됨 | ✅ |
 | 8-3 | 글로벌 EM 직접 사용 → allowGlobalContext=false이면 에러 | ✅ |
 | 8-4 | RequestContext + em.transactional → 정상 | ✅ |
+
+### 09-e2e-request-context.spec.ts — E2E RequestContext
+
+| # | 테스트 | 결과 |
+|---|--------|------|
+| 9-1 | POST 요청 → registerRequestContext가 자동 fork → INSERT 성공 | ✅ |
+| 9-2 | GET 요청 → 자동 fork EM으로 SELECT 성공 | ✅ |
+| 9-3 | 연속 요청 → 각 요청이 독립된 Identity Map 사용 | ✅ |
+| 9-4 | 목록 조회가 이전 요청의 Identity Map에 영향받지 않음 | ✅ |
+| 9-5 | 요청 간 데이터 격리 — POST commit 후 GET으로 즉시 조회 가능 | ✅ |
 
 ### 09-native-operations.spec.ts — 네이티브 연산
 

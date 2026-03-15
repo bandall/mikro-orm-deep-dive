@@ -1,6 +1,6 @@
 # MikroORM v7 — NestJS 실전 가이드
 
-> 104개 테스트로 검증한 실제 동작 기반의 학습 문서
+> 109개 테스트로 검증한 실제 동작 기반의 학습 문서
 
 > **Note**: 이 문서는 Claude를 활용하여 작성되었습니다. 테스트로 검증했으나, 부정확한 내용이 포함되어 있을 수 있습니다.
 
@@ -33,7 +33,7 @@ npm install
 # MySQL 컨테이너 실행
 docker compose up -d
 
-# 테스트 실행 (104개)
+# 테스트 실행 (109개)
 npx vitest run
 ```
 
@@ -109,7 +109,7 @@ npx vitest run
 | # | 주제 |
 |---|------|
 | [A](./docs/appendix-a-jpa-cheatsheet.md) | Spring JPA <-> MikroORM 치트시트 |
-| [B](./docs/appendix-b-test-results.md) | 테스트 결과 요약 (104개) |
+| [B](./docs/appendix-b-test-results.md) | 테스트 결과 요약 (109개) |
 
 ## 기술 스택
 
