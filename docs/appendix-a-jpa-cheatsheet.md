@@ -52,7 +52,7 @@
 |------|-----------|----------|
 | @OneToMany | `@OneToMany(mappedBy = "author")` | `@OneToMany(() => Book, b => b.author)` |
 | @ManyToOne | `@ManyToOne @JoinColumn` | `@ManyToOne(() => Author)` |
-| Cascade ALL | `cascade = CascadeType.ALL` | `cascade: [Cascade.PERSIST, Cascade.REMOVE]` |
+| Cascade ALL | `cascade = CascadeType.ALL` | `cascade: [Cascade.ALL]` (= PERSIST + REMOVE, MERGE는 항상 활성) |
 | orphanRemoval | `orphanRemoval = true` | `orphanRemoval: true` |
 | Eager Loading | `fetch = FetchType.EAGER` | `{ populate: ['books'] }` |
 | Lazy Loading | `fetch = FetchType.LAZY` (기본) | 기본 (Collection 미초기화) |

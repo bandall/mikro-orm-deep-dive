@@ -28,12 +28,23 @@ sequenceDiagram
 
 ## 6.2 LockMode 종류
 
-| LockMode | SQL | 다른 TX의 읽기 | 다른 TX의 쓰기 | 용도 |
-|----------|-----|---------------|---------------|------|
-| `PESSIMISTIC_WRITE` | `FOR UPDATE` | 차단 | 차단 | 잔액 차감, 재고 감소 |
-| `PESSIMISTIC_READ` | `FOR SHARE` | 허용 | 차단 | 일관된 읽기 보장 |
-| `PESSIMISTIC_WRITE_OR_FAIL` | `FOR UPDATE NOWAIT` | - | - | 대기 없이 즉시 실패 |
-| `PESSIMISTIC_PARTIAL_WRITE` | `FOR UPDATE SKIP LOCKED` | - | - | 큐 패턴 (잠긴 행 건너뛰기) |
+### 비관적 잠금 모드
+
+| LockMode | SQL | 다른 TX의 일반 SELECT | 다른 TX의 FOR UPDATE | 다른 TX의 쓰기 | 용도 |
+|----------|-----|---------------------|---------------------|---------------|------|
+| `PESSIMISTIC_WRITE` | `FOR UPDATE` | 허용 | 차단 | 차단 | 잔액 차감, 재고 감소 |
+| `PESSIMISTIC_READ` | `FOR SHARE` | 허용 | 차단 | 차단 | 일관된 읽기 보장 |
+| `PESSIMISTIC_WRITE_OR_FAIL` | `FOR UPDATE NOWAIT` | 허용 | 즉시 에러 | 즉시 에러 | 대기 없이 즉시 실패 |
+| `PESSIMISTIC_READ_OR_FAIL` | `FOR SHARE NOWAIT` | 허용 | 즉시 에러 | 즉시 에러 | 대기 없이 읽기 잠금 |
+| `PESSIMISTIC_PARTIAL_WRITE` | `FOR UPDATE SKIP LOCKED` | 허용 | 잠긴 행 건너뜀 | 잠긴 행 건너뜀 | 큐 패턴 |
+| `PESSIMISTIC_PARTIAL_READ` | `FOR SHARE SKIP LOCKED` | 허용 | 잠긴 행 건너뜀 | 잠긴 행 건너뜀 | 큐 읽기 패턴 |
+
+### 기타 잠금 모드
+
+| LockMode | 동작 |
+|----------|------|
+| `NONE` | 잠금 없음 |
+| `OPTIMISTIC` | 버전 필드(`@Version`)를 이용한 낙관적 잠금 |
 
 ## 6.3 사용법
 

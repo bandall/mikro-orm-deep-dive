@@ -86,12 +86,15 @@ export class BaseRepository<T extends object> extends EntityRepository<T> {
 }
 ```
 
-## 12.3 helper() API — 엔티티 상태 판별
+## 12.3 helper() / wrap() API — 엔티티 상태 판별
 
-`save()`의 핵심은 엔티티 상태를 정확히 판별하는 것이다. `helper()` API가 이를 가능하게 한다:
+`save()`의 핵심은 엔티티 상태를 정확히 판별하는 것이다. MikroORM은 엔티티 내부 상태에 접근하는 두 가지 API를 제공한다:
+
+- `wrap(entity)` — 공식 문서에서 권장하는 **공개 API**. `WrappedEntity`를 반환.
+- `helper(entity)` — 내부 구현용 API로, `wrap()`보다 더 많은 내부 프로퍼티에 접근 가능. 본 프로젝트에서는 `__managed`, `__em` 등 내부 상태가 필요하여 `helper()`를 사용했다.
 
 ```typescript
-import { helper } from '@mikro-orm/core';
+import { helper, wrap } from '@mikro-orm/core';
 
 const wrapped = helper(entity);
 

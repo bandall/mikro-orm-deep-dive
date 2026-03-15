@@ -66,7 +66,10 @@ graph TD
 |------|------|-----|
 | `Cascade.PERSIST` | 부모 persist 시 자식도 자동 persist | INSERT 부모 → INSERT 자식 |
 | `Cascade.REMOVE` | 부모 remove 시 자식도 자동 remove | DELETE 자식 → DELETE 부모 |
+| `Cascade.MERGE` | 항상 활성화 (명시 불필요) | — |
 | `orphanRemoval` | 컬렉션에서 제거된 자식 자동 삭제 | DELETE 자식 |
+
+> **기본값**: Cascade를 명시하지 않으면 `[Cascade.PERSIST]`가 기본 적용된다. `Cascade.MERGE`는 항상 활성화되어 있어 별도 설정이 불필요하다.
 
 ### Cascade.PERSIST 동작
 
@@ -193,7 +196,7 @@ book.author.name;  // ❌ undefined — 로드되지 않은 프로퍼티
 | ManyToOne 다른 필드 | 프록시가 자동 SELECT | **undefined** (로드 필요) |
 
 > **핵심 차이**: Spring Hibernate는 프록시 객체를 통해 프로퍼티 접근 시 자동으로 SELECT를 실행한다.
-> MikroORM은 이런 프록시 메커니즘이 없으므로, `populate` 또는 `Collection.init()`으로 명시적 로딩이 필수다.
+> MikroORM도 ManyToOne 관계에서 `Reference` 프록시를 제공하지만, **프로퍼티 접근 시 자동 DB SELECT는 하지 않는다.** `populate` 또는 `Collection.init()`으로 명시적 로딩이 필수다.
 
 ## 9.5 관계 + 트랜잭션
 

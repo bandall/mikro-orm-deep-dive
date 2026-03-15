@@ -174,6 +174,7 @@ graph TD
 | `REQUIRES_NEW` | 새로 생성 (기존 일시 중단) | 새로 생성 |
 | `SUPPORTS` | 참여 | TX 없이 실행 |
 | `MANDATORY` | 참여 | 에러 |
+| `NOT_SUPPORTED` | TX 없이 실행 (기존 일시 중단) | TX 없이 실행 |
 | `NEVER` | 에러 | TX 없이 실행 |
 
 ### 전파 예시

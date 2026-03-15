@@ -131,7 +131,7 @@ graph LR
     end
 
     subgraph "MikroORM v7"
-        A2[em.create] -->|자동 persist| B2[Managed]
+        A2[em.create] -->|"자동 persist + flush"| B2[Managed]
         B2 -->|다른 EM fork| C2[Detached]
         C2 -->|em.upsert| B2
         B2 -->|em.remove| D2[Removed]

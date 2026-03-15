@@ -23,7 +23,7 @@ import { TsMorphMetadataProvider } from '@mikro-orm/reflection';
       password: 'root',
       entities: ['./dist/**/*.entity.js'],
       entitiesTs: ['./src/**/*.entity.ts'],
-      metadataProvider: TsMorphMetadataProvider,
+      metadataProvider: TsMorphMetadataProvider,  // v7 기본값 — 생략 가능
       debug: true,
       registerRequestContext: true,   // 요청마다 자동 fork
       allowGlobalContext: false,      // 글로벌 EM 직접 사용 차단 (프로덕션 권장)
@@ -203,6 +203,24 @@ async onCron() {
 }
 ```
 
+```typescript
+// ✅ 방법 4: @CreateRequestContext() — NestJS 공식 권장
+import { CreateRequestContext } from '@mikro-orm/core';
+
+@Injectable()
+class CronService {
+  constructor(private readonly orm: MikroORM) {}
+
+  @Cron('*/5 * * * *')
+  @CreateRequestContext()  // 메서드 실행 시 자동으로 RequestContext 생성
+  async onCron() {
+    await this.orm.em.find(Author, {});  // ✅ fork EM으로 위임
+  }
+}
+```
+
+> `@CreateRequestContext()`는 `@mikro-orm/core`에서 제공하는 데코레이터로, 메서드 호출 시 자동으로 `RequestContext.create()`를 래핑한다. 비-HTTP 컨텍스트에서 가장 깔끔한 방식이다.
+
 > SQS 컨슈머, 이벤트 핸들러 등도 동일하다. HTTP 요청 밖이라면 반드시 EM 컨텍스트를 직접 생성해야 한다.
 
 ## 13.5 Read Replica 구성
@@ -252,22 +270,51 @@ const readConn = em.getConnection('read');
 const writeConn = em.getConnection('write');
 
 // replicas 미설정 시 둘 다 같은 커넥션
+
+// em.find() 등에서 connectionType 지정
+import { ConnectionType } from '@mikro-orm/core';
+const authors = await em.find(Author, {}, {
+  connectionType: ConnectionType.READ,  // 명시적으로 replica 사용
+});
+```
+
+### preferReadReplicas 옵션
+
+```typescript
+MikroOrmModule.forRoot({
+  // ...
+  replicas: [{ host: 'replica-1-host' }],
+  preferReadReplicas: true,  // 기본값: true
+  // true면 SELECT 쿼리가 자동으로 replica로 라우팅됨
+  // false면 모든 쿼리가 primary로 전송됨
+})
 ```
 
 ## 13.6 MetadataProvider 선택
 
 | Provider | 장점 | 단점 | 추천 |
 |----------|------|------|------|
-| `TsMorphMetadataProvider` | 데코레이터만으로 타입 추론, `reflect-metadata` 불필요 | 초기 부팅 시 파일 파싱 비용 | 대부분의 경우 |
-| `ReflectMetadataProvider` | 빠른 부팅 | `reflect-metadata` + `emitDecoratorMetadata` 필요 | 레거시 프로젝트 |
+| `TsMorphMetadataProvider` | **v7 기본값**, 데코레이터만으로 타입 추론, `reflect-metadata` 불필요, 레거시/ES 데코레이터 모두 지원 | 초기 부팅 시 파일 파싱 비용, `@mikro-orm/reflection` 패키지 필요 | 대부분의 경우 (v7 기본) |
+| `ReflectMetadataProvider` | 빠른 부팅 | `reflect-metadata` + `emitDecoratorMetadata` 필요, v7에서는 레거시 데코레이터(`experimentalDecorators`) 필수, `@mikro-orm/decorators/legacy`에서 제공 | 레거시 데코레이터 사용 프로젝트 |
+
+> **v6 → v7 변경사항**: v7에서 `ReflectMetadataProvider`는 더 이상 기본값이 아니다. `TsMorphMetadataProvider`가 v7의 기본 MetadataProvider이다. 레거시 데코레이터를 계속 사용하려면 `ReflectMetadataProvider`를 명시적으로 설정해야 한다.
 
 ```typescript
+// v7 기본값은 TsMorphMetadataProvider — metadataProvider를 생략하면 적용됨
 import { TsMorphMetadataProvider } from '@mikro-orm/reflection';
 
 MikroOrmModule.forRoot({
-  metadataProvider: TsMorphMetadataProvider,
+  // metadataProvider 생략 → TsMorphMetadataProvider 사용 (v7 기본)
   entities: ['./dist/**/*.entity.js'],
   entitiesTs: ['./src/**/*.entity.ts'],  // ← ts-morph가 소스 파일을 직접 파싱
+})
+
+// 레거시 데코레이터 프로젝트에서 ReflectMetadataProvider 사용 시
+import { ReflectMetadataProvider } from '@mikro-orm/decorators/legacy';
+
+MikroOrmModule.forRoot({
+  metadataProvider: ReflectMetadataProvider,  // ← 명시적 설정 필요 (v7에서 기본값 아님)
+  entities: ['./dist/**/*.entity.js'],
 })
 ```
 

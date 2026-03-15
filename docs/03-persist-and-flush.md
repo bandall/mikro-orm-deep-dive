@@ -110,28 +110,38 @@ graph TD
 | `COMMIT` | 트랜잭션 COMMIT 시에만 | 읽기 전용 컨텍스트 |
 | `ALWAYS` | 매 쿼리 전 항상 | dirty UPDATE도 자동 flush 필요할 때 |
 
-### AUTO의 함정
+### AUTO의 동작 조건
 
-**AUTO는 pending INSERT만 자동 flush한다. dirty UPDATE는 flush하지 않는다.**
+**AUTO는 `em.persist()`로 등록된 변경 중, 쿼리 대상 엔티티 타입과 overlap이 있을 때만 자동 flush한다.**
+
+두 가지 조건이 모두 충족되어야 auto flush가 발동한다:
+1. `em.persist()`로 명시적으로 등록된 변경이 있어야 함
+2. 조회하려는 엔티티 타입과 pending 변경의 엔티티 타입이 겹쳐야 함
 
 ```typescript
 // FlushMode.AUTO에서의 동작
 
-// Case 1: INSERT — 자동 flush됨 ✅
+// Case 1: persist(Author) → find(Author) — 타입 overlap → auto flush ✅
 em.persist(em.create(Author, { name: 'New' }));
 const found = await em.find(Author, {});
 // → INSERT가 먼저 실행되고 SELECT → 'New' 포함됨
 
-// Case 2: UPDATE — 자동 flush 안 됨 ⚠️
+// Case 2: persist(Author) → find(Book) — 타입 다름 → flush 안 함 ⚠️
+em.persist(em.create(Author, { name: 'New' }));
+await em.find(Book, {});
+// → Author INSERT 없이 Book SELECT만 실행
+
+// Case 3: dirty UPDATE — persist() 호출 안 함 → flush 안 됨 ⚠️
 const author = await em.findOne(Author, 1);
 author.name = 'Changed';
 const result = await em.find(Author, { name: 'Changed' });
 // → UPDATE 없이 SELECT → DB에서는 아직 'Changed'가 아님!
-// → Identity Map에 있으므로 결과는 상황에 따라 다름
+// (dirty 엔티티에 em.persist()를 호출하면 AUTO flush 대상이 됨)
 ```
 
 > **Spring JPA와의 차이**: JPA의 FlushMode.AUTO는 dirty UPDATE도 자동 flush한다.
-> MikroORM은 다르다. 명시적으로 `flush()`를 호출하거나 `FlushMode.ALWAYS`를 사용해야 한다.
+> MikroORM의 AUTO는 `em.persist()`로 등록된 변경만 감지한다.
+> dirty UPDATE를 자동 flush하려면 `FlushMode.ALWAYS`를 사용하거나 명시적으로 `flush()`를 호출해야 한다.
 
 ## 3.5 persist vs persistAndFlush
 
