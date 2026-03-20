@@ -1,4 +1,4 @@
-import { EntityRepository, FilterQuery, Primary, helper } from '@mikro-orm/core';
+import { EntityRepository, FilterQuery, Primary, helper, wrap } from '@mikro-orm/core';
 import { Transactional } from '@mikro-orm/decorators/legacy';
 
 /**
@@ -12,16 +12,19 @@ export class BaseRepository<T extends object> extends EntityRepository<T> {
   /**
    * JPA save() — 엔티티 상태에 따라 적절한 전략을 선택한다.
    *
-   * | 상태                    | 동작                                    |
-   * |-------------------------|----------------------------------------|
-   * | New (PK 없음)           | persist → INSERT                       |
-   * | New (수동 PK)           | persist → INSERT                       |
-   * | Managed (같은 EM)       | no-op → dirty checking UPDATE          |
-   * | Detached (다른 EM)      | upsert → UPDATE                        |
+   * | 상태                    | 동작                                         |
+   * |-------------------------|---------------------------------------------|
+   * | New (PK 없음)           | persist → INSERT                            |
+   * | New (수동 PK)           | persist → INSERT                            |
+   * | Managed (같은 EM)       | no-op → dirty checking UPDATE               |
+   * | Detached (다른 EM)      | findOne + assign → dirty checking UPDATE    |
    */
   @Transactional()
   async save(entity: T): Promise<T> {
-    const em = this.em;
+    // this.em은 EntityRepository 생성자에서 할당된 raw property (global EM).
+    // getContext(false)로 현재 트랜잭션 컨텍스트의 fork EM을 가져와야
+    // entity.__em === em 비교가 정상 동작한다.
+    const em = (this.em as any).getContext(false) as typeof this.em;
     const wrapped = helper(entity);
 
     // Case 1: 이미 이 EM에서 managed → dirty checking에 맡김
@@ -35,11 +38,18 @@ export class BaseRepository<T extends object> extends EntityRepository<T> {
       return entity;
     }
 
-    // Case 3: PK 있고, DB에서 로드된 적 있음 (detached) → upsert
-    // MikroORM의 merge()는 __originalEntityData를 현재 값으로 덮어쓰므로
-    // dirty checking이 동작하지 않음. upsert로 DB에 직접 반영한다.
+    // Case 3: PK 있고, DB에서 로드된 적 있음 (detached) → JPA-style merge
+    // DB에서 현재 상태를 읽어 managed 엔티티를 만들고, detached 값을 복사한다.
+    // flush 시 dirty checking으로 변경된 컬럼만 UPDATE된다.
+    // (em.merge()는 __originalEntityData를 현재 값으로 덮어써 dirty checking이 불가)
     if (wrapped.__originalEntityData) {
-      return await em.upsert(this.entityName, entity as any) as T;
+      const managed = await em.findOne(this.entityName, wrapped.getPrimaryKey() as any);
+      if (!managed) {
+        em.persist(entity);
+        return entity;
+      }
+      wrap(managed).assign(entity as any);
+      return managed;
     }
 
     // Case 4: PK 있고, DB에서 로드된 적 없음 → 새 엔티티 (수동 PK)
@@ -48,16 +58,39 @@ export class BaseRepository<T extends object> extends EntityRepository<T> {
   }
 
   /**
-   * JPA saveAll()
+   * JPA saveAll() — save()와 동일한 상태 판별 로직을 배치로 실행.
    */
   @Transactional()
   async saveAll(entities: T[]): Promise<T[]> {
+    const em = (this.em as any).getContext(false) as typeof this.em;
+
     return Promise.all(entities.map(async (entity) => {
       const wrapped = helper(entity);
-      if (wrapped.__managed && wrapped.__em === this.em) return entity;
-      if (!wrapped.hasPrimaryKey()) { this.em.persist(entity); return entity; }
-      if (wrapped.__originalEntityData) return await this.em.upsert(this.entityName, entity as any) as T;
-      this.em.persist(entity);
+
+      // Case 1: Managed
+      if (wrapped.__managed && wrapped.__em === em) {
+        return entity;
+      }
+
+      // Case 2: New (PK 없음)
+      if (!wrapped.hasPrimaryKey()) {
+        em.persist(entity);
+        return entity;
+      }
+
+      // Case 3: Detached → JPA-style merge
+      if (wrapped.__originalEntityData) {
+        const managed = await em.findOne(this.entityName, wrapped.getPrimaryKey() as any);
+        if (!managed) {
+          em.persist(entity);
+          return entity;
+        }
+        wrap(managed).assign(entity as any);
+        return managed;
+      }
+
+      // Case 4: New (수동 PK)
+      em.persist(entity);
       return entity;
     }));
   }

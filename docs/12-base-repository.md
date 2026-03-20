@@ -40,7 +40,7 @@ graph TD
     B -->|No| D{PK가<br/>있는가?}
     D -->|No| E["em.persist<br/>→ flush 시 INSERT"]
     D -->|Yes| F{__originalEntityData<br/>있는가?}
-    F -->|Yes| G["em.upsert<br/>→ INSERT ON DUPLICATE KEY UPDATE"]
+    F -->|Yes| G["findOne + assign<br/>→ dirty checking UPDATE"]
     F -->|No| H["em.persist<br/>→ flush 시 INSERT (수동 PK)"]
 ```
 
@@ -51,7 +51,7 @@ graph TD
 | New (PK 없음) | `!hasPrimaryKey()` | `em.persist` | INSERT |
 | New (수동 PK) | PK 있음 + `__originalEntityData` 없음 | `em.persist` | INSERT |
 | Managed | `__managed && __em === em` | no-op | UPDATE (dirty checking) |
-| Detached | `__originalEntityData` 있음 + 다른 EM | `em.upsert` | INSERT ON DUPLICATE KEY UPDATE |
+| Detached | `__originalEntityData` 있음 + 다른 EM | `findOne` + `assign` | UPDATE (변경된 컬럼만) |
 
 ### 구현 코드
 
@@ -60,7 +60,10 @@ export class BaseRepository<T extends object> extends EntityRepository<T> {
 
   @Transactional()
   async save(entity: T): Promise<T> {
-    const em = this.em;
+    // this.em은 EntityRepository 생성자에서 할당된 raw property (global EM).
+    // getContext(false)로 현재 트랜잭션 컨텍스트의 fork EM을 가져와야
+    // entity.__em === em 비교가 정상 동작한다.
+    const em = (this.em as any).getContext(false) as typeof this.em;
     const wrapped = helper(entity);
 
     // Case 1: Managed — dirty checking에 맡김
@@ -74,9 +77,17 @@ export class BaseRepository<T extends object> extends EntityRepository<T> {
       return entity;
     }
 
-    // Case 3: Detached — DB에서 로드된 적 있음
+    // Case 3: Detached — JPA-style merge
+    // DB에서 현재 상태를 읽어 managed 엔티티를 만들고, detached 값을 복사한다.
+    // flush 시 dirty checking으로 변경된 컬럼만 UPDATE된다.
     if (wrapped.__originalEntityData) {
-      return await em.upsert(this.entityName, entity as any) as T;
+      const managed = await em.findOne(this.entityName, wrapped.getPrimaryKey() as any);
+      if (!managed) {
+        em.persist(entity);
+        return entity;
+      }
+      wrap(managed).assign(entity as any);
+      return managed;
     }
 
     // Case 4: New — 수동 PK
@@ -85,6 +96,14 @@ export class BaseRepository<T extends object> extends EntityRepository<T> {
   }
 }
 ```
+
+> **왜 `this.em`을 직접 쓰면 안 되는가**
+>
+> `EntityRepository.em`은 생성자에서 `this.em = em`으로 할당된 **raw property**다. NestJS `@InjectRepository()`로 주입된 레포지토리는 `this.em = global_em`이 된다.
+>
+> `global_em`의 **메서드 호출**(`findOne()`, `persist()` 등)은 내부적으로 `getContext()`를 통해 현재 fork EM으로 위임되므로 올바르게 동작한다. 그러나 **`===` 비교**는 객체 레퍼런스를 직접 비교하기 때문에, `entity.__em(= fork)  !== this.em(= global_em)`이 되어 Case 1이 절대 통과되지 않는다.
+>
+> `em.getRepository(fork)`로 레포지토리를 생성한 경우(테스트 코드 패턴)는 `this.em = fork`가 되어 이 문제가 발생하지 않는다. NestJS DI 환경에서만 재현된다.
 
 ## 12.3 helper() / wrap() API — 엔티티 상태 판별
 
@@ -149,32 +168,98 @@ sequenceDiagram
     Note over EM2: 비교: 'Park' vs 'Park'<br/>→ 차이 없음<br/>→ UPDATE 없음 ❌
 ```
 
-### em.upsert()로 해결
+### 해결 방법 비교: upsert vs JPA-style merge
+
+Detached 엔티티를 다른 EM에서 저장하는 방법은 두 가지가 있다:
+
+#### 방법 1: em.upsert() (현재 BaseRepository 구현)
 
 ```mermaid
 sequenceDiagram
-    participant EM1 as EM #1
-    participant Entity
     participant EM2 as EM #2
     participant DB
 
-    EM1->>DB: SELECT (로드)
-    DB-->>Entity: { name: 'Kim' }
-
-    Entity->>Entity: name = 'Park'
-
     EM2->>DB: em.upsert(entity)
-    Note over DB: INSERT ... ON DUPLICATE KEY UPDATE<br/>name = 'Park'
+    Note over DB: INSERT ... ON CONFLICT DO UPDATE<br/>SET name='Park', email='kim@test.com', ...<br/>(전체 컬럼 덮어쓰기)
     DB-->>EM2: 반영 완료 ✅
 ```
 
 ```typescript
-// ❌ merge — dirty checking이 동작하지 않음
+// upsert — SELECT 없이 바로 INSERT/UPDATE
+await em2.upsert(UserEntity, detachedEntity);
+```
+
+#### 방법 2: findOne + assign (JPA merge 방식)
+
+```mermaid
+sequenceDiagram
+    participant EM2 as EM #2
+    participant DB
+
+    EM2->>DB: SELECT * FROM users WHERE id = 1
+    DB-->>EM2: { name: 'Kim', email: 'kim@test.com' }
+    Note over EM2: managed 엔티티 생성<br/>__originalEntityData = { name: 'Kim' }
+
+    EM2->>EM2: wrap(managed).assign(detached)
+    Note over EM2: managed.name = 'Park'
+
+    EM2->>EM2: flush()
+    Note over EM2: 비교: 'Kim' → 'Park' ← 변경됨!<br/>→ UPDATE SET name = 'Park' WHERE id = 1
+    EM2->>DB: UPDATE (변경된 컬럼만)
+```
+
+```typescript
+// JPA-style merge — DB에서 읽고, 값 복사 후, dirty checking
+const managed = await em2.findOne(UserEntity, detached.id);
+if (!managed) {
+  em2.persist(detached);  // 삭제된 경우 → 새로 INSERT
+  return detached;
+}
+wrap(managed).assign(detached);  // detached 값 → managed에 복사
+// flush 시 dirty checking → 변경된 컬럼만 UPDATE
+```
+
+#### 비교표
+
+| | upsert (현재) | findOne + assign (JPA-style) |
+|---|---|---|
+| **쿼리 수** | 1 (`INSERT ON CONFLICT`) | 2 (`SELECT` + `UPDATE`) |
+| **변경 감지** | 전체 컬럼 `SET` | 변경된 컬럼만 `SET` |
+| **`GENERATED ALWAYS` 호환** | **에러** — INSERT에 id 포함 | **정상** — UPDATE만 실행 |
+| **삭제된 엔티티** | INSERT (upsert 특성) | null 체크 필요 |
+| **race condition** | 마지막 쓰기 승리 | DB 현재 상태 기준 비교 |
+
+#### 현재 선택: upsert
+
+현재 BaseRepository는 upsert를 사용한다. `@Transactional()` + dirty checking 패턴에서는 엔티티가 같은 트랜잭션 EM에서 로드되므로 **Case 3(detached) 자체가 발생하지 않는다**. upsert는 `@Transactional()` 없이 `save()`를 단독 호출하는 예외적 상황의 안전장치일 뿐이다.
+
+향후 `GENERATED ALWAYS AS IDENTITY` 컬럼 사용이나 변경 컬럼 최소화가 필요해지면, Case 3을 JPA-style로 교체할 수 있다:
+
+```typescript
+// Case 3 개선안 (필요할 때 적용)
+if (wrapped.__originalEntityData) {
+  const managed = await em.findOne(this.entityName, wrapped.getPrimaryKey());
+  if (!managed) {
+    em.persist(entity);
+    return entity;
+  }
+  wrap(managed).assign(entity);
+  return managed;
+}
+```
+
+```typescript
+// ❌ em.merge() — dirty checking이 동작하지 않음
 em2.merge(detachedEntity);
 await em2.flush();  // → UPDATE 없음!
 
-// ✅ upsert — 직접 DB에 반영
+// ✅ em.upsert() — 직접 DB에 반영 (현재 구현)
 await em2.upsert(UserEntity, detachedEntity);  // → UPDATE 실행
+
+// ✅ findOne + assign — JPA-style merge (향후 개선안)
+const managed = await em2.findOne(UserEntity, detached.id);
+wrap(managed).assign(detached);
+await em2.flush();  // → 변경된 컬럼만 UPDATE
 ```
 
 ## 12.5 delete()에 @Transactional()을 붙이지 않은 이유
@@ -274,27 +359,33 @@ async delete(entity: T): Promise<void> {
 ```typescript
 @Transactional()
 async saveAll(entities: T[]): Promise<T[]> {
+  const em = (this.em as any).getContext(false) as typeof this.em;
+
   return Promise.all(entities.map(async (entity) => {
     const wrapped = helper(entity);
 
-    if (wrapped.__managed && wrapped.__em === this.em) return entity;
+    if (wrapped.__managed && wrapped.__em === em) return entity;
 
     if (!wrapped.hasPrimaryKey()) {
-      this.em.persist(entity);
+      em.persist(entity);
       return entity;
     }
 
+    // Detached → JPA-style merge
     if (wrapped.__originalEntityData) {
-      return await this.em.upsert(this.entityName, entity as any) as T;
+      const managed = await em.findOne(this.entityName, wrapped.getPrimaryKey() as any);
+      if (!managed) { em.persist(entity); return entity; }
+      wrap(managed).assign(entity as any);
+      return managed;
     }
 
-    this.em.persist(entity);
+    em.persist(entity);
     return entity;
   }));
 }
 ```
 
-> **주의**: `upsert()`는 async이므로 `Promise.all` + `async map`이 필수. 일반 `map`을 쓰면 `Promise<T>[]`가 반환되어 타입 에러.
+> **주의**: detached 엔티티의 `findOne()`은 async이므로 `Promise.all` + `async map`이 필수. 일반 `map`을 쓰면 `Promise<T>[]`가 반환되어 타입 에러.
 
 ## 12.7 전체 BaseRepository API
 
@@ -387,7 +478,7 @@ export class UserEntity {
 | 12-10 | delete(entity) → 삭제 |
 | 12-11 | 커스텀 메서드 findByName() → 정상 동작 |
 | 12-12 | @Transactional() 없이 repo 사용 → allowGlobalContext=false이면 에러 |
-| 13-1 | save(detached 엔티티) → upsert UPDATE |
+| 13-1 | save(detached 엔티티) → JPA-style merge UPDATE |
 | 13-2 | save(detached 변경 없음) → 데이터 유지 |
 | 13-3 | deleteById() + @Transactional() throw → rollback |
 | 13-4 | save + delete 연속 호출 → 정상 처리 |
@@ -396,6 +487,8 @@ export class UserEntity {
 | 13-7 | saveAll() 혼합 상태 — new + managed → 모두 정상 처리 |
 | 13-8 | deleteAll() → 여러 엔티티를 flush 1번으로 삭제 |
 | 13-9 | deleteAllByIds() → 단일 DELETE WHERE id IN (...) 쿼리 |
+| 13-10 | NestJS DI 주입 repo로 @Transactional 서비스에서 save(managed) → upsert 없이 dirty checking |
+| 13-11 | save() 없이 필드 수정만 → dirty checking으로 UPDATE |
 
 ---
 

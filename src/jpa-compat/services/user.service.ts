@@ -36,4 +36,20 @@ export class UserService {
     await this.userRepo.deleteById(id);
     throw new Error('Rollback after delete');
   }
+
+  // DI 주입 레포지토리로 load + save — Case 1 (dirty checking) 검증용
+  @Transactional()
+  async loadAndUpdateUser(id: number, name: string): Promise<UserEntity> {
+    const user = await this.userRepo.findOneOrFail(id);
+    user.name = name;
+    return this.userRepo.save(user);
+  }
+
+  // save() 호출 없이 필드 수정만 — dirty checking으로 UPDATE 되는지 검증용
+  @Transactional()
+  async loadAndMutateWithoutSave(id: number, name: string): Promise<void> {
+    const user = await this.userRepo.findOneOrFail(id);
+    user.name = name;
+    // save() 호출 없음 — @Transactional() flush 시 dirty checking이 UPDATE 발행해야 함
+  }
 }

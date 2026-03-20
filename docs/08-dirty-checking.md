@@ -35,7 +35,7 @@ sequenceDiagram
 const author = await em.findOne(Author, 1);
 // DB: { name: 'Kim', email: 'kim@test.com', age: 30 }
 
-author.name = 'Park';
+author.name = "Park";
 // name만 변경
 
 await em.flush();
@@ -81,11 +81,7 @@ await em.flush();
 
 ```typescript
 // nativeUpdate — 원자적 증가 (race condition 안전)
-await em.nativeUpdate(
-  Author,
-  { id: 1 },
-  { age: raw('age + 1') },
-);
+await em.nativeUpdate(Author, { id: 1 }, { age: raw("age + 1") });
 // → UPDATE authors SET age = age + 1 WHERE id = 1
 // 하지만 Identity Map의 author.age는 여전히 이전 값!
 ```
@@ -96,13 +92,13 @@ await em.nativeUpdate(
 const author = await em.findOne(Author, 1);
 
 // 개별 할당
-author.name = 'Park';
-author.email = 'park@test.com';
+author.name = "Park";
+author.email = "park@test.com";
 
 // em.assign() — DTO를 한 번에 할당
 em.assign(author, {
-  name: 'Park',
-  email: 'park@test.com',
+  name: "Park",
+  email: "park@test.com",
 });
 
 await em.flush();
@@ -111,11 +107,53 @@ await em.flush();
 
 ## 8.6 Dirty Checking이 동작하지 않는 경우
 
+### Case 0: TsMorphMetadataProvider + 외부 패키지 엔티티
+
+**가장 흔하고 진단이 어려운 함정.** `TsMorphMetadataProvider`를 사용할 때, 엔티티의 **부모 클래스가 빌드된 npm 패키지** 안에 있으면 dirty checking이 **조용히 실패**한다.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  @plug-link/commons (빌드된 패키지)                           │
+│                                                              │
+│  dist/base.entity.d.ts   ← 타입만, 데코레이터 정보 없음        │
+│  dist/base.entity.js     ← 런타임 __decorate만               │
+│                                                              │
+│  @PrimaryKey(), @Property() 메타데이터를 TsMorph이 읽을 수 없음 │
+└─────────────────────────────────────────────────────────────┘
+         ↑ extends
+┌─────────────────────────────────────────────────────────────┐
+│  로컬 서비스 (TypeScript 소스)                                │
+│                                                              │
+│  @Entity()                                                   │
+│  class UserEntity extends BaseEntity {                       │
+│    @Property() name!: string;                                │
+│  }                                                           │
+│                                                              │
+│  TsMorph이 UserEntity는 읽지만, BaseEntity의                  │
+│  id/createdAt/updatedAt 메타데이터를 못 읽음                   │
+│  → 엔티티 메타데이터 불완전 → dirty checking 실패               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**증상**: `@Transactional()` 안에서 엔티티 필드를 수정해도 UPDATE SQL이 생성되지 않음. 에러도 없이 조용히 무시됨.
+
+**원인**: `TsMorphMetadataProvider`는 **TypeScript 소스 파일**을 파싱하여 `@PrimaryKey()`, `@Property()` 등의 데코레이터를 읽는다. 빌드된 패키지의 `.d.ts`에는 데코레이터 정보가 없고, `.js`에는 `__decorate` 런타임 호출만 있어 TsMorph이 메타데이터를 추출할 수 없다.
+
+**해결 방법**:
+
+| 방법                      | 설명                                                                      |
+| ------------------------- | ------------------------------------------------------------------------- |
+| 엔티티 소스를 로컬에 유지 | BaseEntity를 패키지가 아닌 로컬 TypeScript 소스로 관리                    |
+| 패키지에 소스 포함        | `package.json`의 `files`에 `src/` 추가, TsMorph이 소스 경로를 찾도록 설정 |
+| reflect-metadata 사용     | `TsMorphMetadataProvider` 대신 런타임 데코레이터 기반 메타데이터 사용     |
+
+> **실제 사례**: `@plug-link/commons`에서 `BaseEntity`, `BaseRepository`를 빌드된 패키지로 제공했을 때, `@Transactional()` 안에서 dirty checking이 전혀 동작하지 않았다. 동일한 코드를 로컬 TypeScript 소스로 옮기자 즉시 정상 동작. `@Transactional()` 데코레이터나 `TransactionalExplorer`는 패키지에서 import해도 문제없었다 — **엔티티 메타데이터만** 영향을 받는다.
+
 ### Case 1: disableIdentityMap으로 조회
 
 ```typescript
 const [author] = await em.find(Author, {}, { disableIdentityMap: true });
-author.name = 'Changed';
+author.name = "Changed";
 await em.flush();
 // → UPDATE 없음 (Identity Map에 없으므로 추적 안 됨)
 ```
@@ -135,23 +173,23 @@ em2.merge(detachedEntity);
 ```typescript
 // 주의: 배열/객체의 내부 변경은 감지 안 될 수 있음
 // MikroORM의 JSON 필드에서 주의 필요
-entity.jsonField.nested.value = 'changed';
+entity.jsonField.nested.value = "changed";
 // → 참조가 동일하므로 변경 감지 안 될 수 있음
 
 // 해결: 새 객체로 할당
-entity.jsonField = { ...entity.jsonField, nested: { value: 'changed' } };
+entity.jsonField = { ...entity.jsonField, nested: { value: "changed" } };
 ```
 
 ## 8.7 검증된 동작 (테스트 기반)
 
-| 테스트 | 검증 내용 |
-|--------|----------|
-| 5-1 | 필드 변경 → flush → UPDATE |
-| 5-2 | 같은 값으로 할당 → flush → 쿼리 없음 |
-| 5-3 | 여러 필드 변경 → flush → UPDATE 1회 |
-| 5-4 | 필드 변경 → persist 없이 flush → UPDATE 실행 |
-| 9-1 | nativeUpdate → Identity Map과 불일치 |
-| 12-3 | save(변경 없는 엔티티) → 쿼리 없음 |
+| 테스트 | 검증 내용                                    |
+| ------ | -------------------------------------------- |
+| 5-1    | 필드 변경 → flush → UPDATE                   |
+| 5-2    | 같은 값으로 할당 → flush → 쿼리 없음         |
+| 5-3    | 여러 필드 변경 → flush → UPDATE 1회          |
+| 5-4    | 필드 변경 → persist 없이 flush → UPDATE 실행 |
+| 9-1    | nativeUpdate → Identity Map과 불일치         |
+| 12-3   | save(변경 없는 엔티티) → 쿼리 없음           |
 
 ---
 

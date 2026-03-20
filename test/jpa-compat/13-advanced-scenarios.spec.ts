@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { MikroORM, helper } from '@mikro-orm/core';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { MikroORM, helper, EntityManager } from '@mikro-orm/core';
 import { INestApplication } from '@nestjs/common';
 import { TestingModule } from '@nestjs/testing';
 import { UserEntity } from '../../src/jpa-compat/entities/user.entity';
@@ -28,7 +28,7 @@ describe('13. BaseRepository — 고급 시나리오', () => {
 
   // --- Detached Entity Save ---
 
-  it('13-1: save(detached 엔티티) → 다른 EM에서 로드된 엔티티 upsert UPDATE', async () => {
+  it('13-1: save(detached 엔티티) → 다른 EM에서 JPA-style merge UPDATE', async () => {
     // seed
     const seed = orm.em.fork();
     const user = seed.create(UserEntity, { name: 'Original', email: 'a@b.com' });
@@ -211,6 +211,48 @@ describe('13. BaseRepository — 고급 시나리오', () => {
     const remaining = await verify.find(UserEntity, {});
     expect(remaining).toHaveLength(1);
     expect(remaining[0].name).toBe('Keep');
+  });
+
+  // --- DI 주입 레포지토리의 save() Case 1 (dirty checking) ---
+
+  it('13-10: DI 주입 repo로 @Transactional 서비스에서 save(managed) → upsert 없이 dirty checking', async () => {
+    // seed
+    const seed = orm.em.fork();
+    const user = seed.create(UserEntity, { name: 'DI Managed Test' });
+    seed.persist(user);
+    await seed.flush();
+    const id = user.id;
+
+    const userService = module.get(UserService);
+
+    // EntityManager.prototype.upsert spy — 어느 fork에서 호출돼도 감지
+    const upsertSpy = vi.spyOn(EntityManager.prototype, 'upsert');
+
+    await userService.loadAndUpdateUser(id, 'DI Updated');
+
+    // managed 엔티티는 dirty checking으로 UPDATE돼야 함 → upsert 호출 없어야 함
+    expect(upsertSpy).not.toHaveBeenCalled();
+
+    const verify = orm.em.fork();
+    const found = await verify.findOne(UserEntity, id);
+    expect(found!.name).toBe('DI Updated');
+
+    upsertSpy.mockRestore();
+  });
+
+  it('13-11: save() 없이 필드 수정만 → dirty checking으로 UPDATE', async () => {
+    const seed = orm.em.fork();
+    const user = seed.create(UserEntity, { name: 'Dirty Only' });
+    seed.persist(user);
+    await seed.flush();
+    const id = user.id;
+
+    const userService = module.get(UserService);
+    await userService.loadAndMutateWithoutSave(id, 'Dirty Updated');
+
+    const verify = orm.em.fork();
+    const found = await verify.findOne(UserEntity, id);
+    expect(found!.name).toBe('Dirty Updated');
   });
 
   it('13-9: deleteAllByIds() → 단일 DELETE WHERE id IN (...) 쿼리', async () => {

@@ -1,4 +1,4 @@
-# 부록 B. 테스트 결과 요약 (120개)
+# 부록 B. 테스트 결과 요약 (106개)
 
 > 모든 문서의 "검증된 동작"은 아래 테스트로 확인되었다.
 
@@ -206,7 +206,7 @@
 
 | # | 테스트 | 결과 |
 |---|--------|------|
-| 13-1 | save(detached 엔티티) → upsert UPDATE | ✅ |
+| 13-1 | save(detached 엔티티) → JPA-style merge UPDATE | ✅ |
 | 13-2 | save(detached 변경 없음) → 데이터 유지 | ✅ |
 | 13-3 | deleteById + @Transactional throw → rollback | ✅ |
 | 13-4 | save + delete 연속 호출 → 정상 처리 | ✅ |
@@ -215,6 +215,8 @@
 | 13-7 | saveAll() 혼합 상태 — new + managed → 모두 정상 | ✅ |
 | 13-8 | deleteAll() → 여러 엔티티를 flush 1번으로 삭제 | ✅ |
 | 13-9 | deleteAllByIds() → 단일 DELETE WHERE id IN (...) 쿼리 | ✅ |
+| 13-10 | NestJS DI 주입 repo로 @Transactional 서비스에서 save(managed) → upsert 없이 dirty checking | ✅ |
+| 13-11 | save() 없이 필드 수정만 → dirty checking으로 UPDATE | ✅ |
 
 ## B.3 테스트 카테고리별 요약
 
@@ -234,8 +236,8 @@
 | Readonly & CQRS | 15 | 05장, 06장 |
 | TransactionalExplorer | 5 | 11장 |
 | BaseRepository | 12 | 12장 |
-| 고급 시나리오 | 9 | 12장 |
-| **합계** | **104** | |
+| 고급 시나리오 | 11 | 12장 |
+| **합계** | **106** | |
 
 ---
 

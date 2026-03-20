@@ -27,10 +27,14 @@ sequenceDiagram
     DB-->>UoW: OK
 ```
 
-| 단계 | 메서드 | 하는 일 | SQL 실행 |
-|------|--------|---------|---------|
-| **추적** | `em.persist(entity)` | Unit of Work에 등록 | X |
-| **실행** | `await em.flush()` | 변경 감지 → SQL 생성 → DB 전송 | O |
+
+
+
+| 단계     | 메서드                  | 하는 일                   | SQL 실행 |
+| ------ | -------------------- | ---------------------- | ------ |
+| **추적** | `em.persist(entity)` | Unit of Work에 등록       | X      |
+| **실행** | `await em.flush()`   | 변경 감지 → SQL 생성 → DB 전송 | O      |
+
 
 ## 3.2 왜 분리했는가?
 
@@ -104,17 +108,22 @@ graph TD
     end
 ```
 
-| 모드 | 자동 flush 시점 | 용도 |
-|------|----------------|------|
-| `AUTO` | SELECT 전에 pending INSERT가 있으면 | 기본값, 대부분의 경우 |
-| `COMMIT` | 트랜잭션 COMMIT 시에만 | 읽기 전용 컨텍스트 |
-| `ALWAYS` | 매 쿼리 전 항상 | dirty UPDATE도 자동 flush 필요할 때 |
+
+
+
+| 모드       | 자동 flush 시점                   | 용도                           |
+| -------- | ----------------------------- | ---------------------------- |
+| `AUTO`   | SELECT 전에 pending INSERT가 있으면 | 기본값, 대부분의 경우                 |
+| `COMMIT` | 트랜잭션 COMMIT 시에만               | 읽기 전용 컨텍스트                   |
+| `ALWAYS` | 매 쿼리 전 항상                     | dirty UPDATE도 자동 flush 필요할 때 |
+
 
 ### AUTO의 동작 조건
 
 **AUTO는 `em.persist()`로 등록된 변경 중, 쿼리 대상 엔티티 타입과 overlap이 있을 때만 자동 flush한다.**
 
 두 가지 조건이 모두 충족되어야 auto flush가 발동한다:
+
 1. `em.persist()`로 명시적으로 등록된 변경이 있어야 함
 2. 조회하려는 엔티티 타입과 pending 변경의 엔티티 타입이 겹쳐야 함
 
@@ -180,15 +189,17 @@ flush() 호출
 
 ## 3.7 검증된 동작 (테스트 기반)
 
-| 테스트 | 검증 내용 |
-|--------|----------|
-| 1-1 | 새 엔티티 persist + flush → INSERT |
-| 1-2 | managed 엔티티에 persist + flush (변경 없음) → 쿼리 없음 |
-| 1-3 | 새 엔티티 persist 2번 + flush → INSERT 1회 (Set 중복 무해) |
-| 1-6 | em.create() + flush (persist 호출 없이) → persistOnCreate 동작 확인 |
+
+| 테스트 | 검증 내용                                                             |
+| --- | ----------------------------------------------------------------- |
+| 1-1 | 새 엔티티 persist + flush → INSERT                                    |
+| 1-2 | managed 엔티티에 persist + flush (변경 없음) → 쿼리 없음                      |
+| 1-3 | 새 엔티티 persist 2번 + flush → INSERT 1회 (Set 중복 무해)                  |
+| 1-6 | em.create() + flush (persist 호출 없이) → persistOnCreate 동작 확인       |
 | 3-1 | FlushMode.AUTO — persist(Author) → find(Author) → auto flush 후 조회 |
-| 3-4 | FlushMode.AUTO — dirty UPDATE는 auto flush 안 됨 |
-| 3-5 | FlushMode.COMMIT — persist → find → flush 안 함 |
+| 3-4 | FlushMode.AUTO — dirty UPDATE는 auto flush 안 됨                     |
+| 3-5 | FlushMode.COMMIT — persist → find → flush 안 함                     |
+
 
 ---
 

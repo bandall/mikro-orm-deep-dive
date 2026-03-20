@@ -9,6 +9,7 @@ import { PostEntity } from './entities/post.entity';
 import { TransactionalExplorer } from './transactional.explorer';
 import { UserService } from './services/user.service';
 import { OrderService } from './services/order.service';
+import { UserController } from './controllers/user.controller';
 
 @Global()
 @Module({
@@ -33,6 +34,7 @@ import { OrderService } from './services/order.service';
     } as unknown as MikroOrmModuleAsyncOptions),
     MikroOrmModule.forFeature([UserEntity, PostEntity]),
   ],
+  controllers: [UserController],
   providers: [
     {
       provide: MysqlEntityManager,
