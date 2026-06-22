@@ -125,11 +125,60 @@ await this.em.nativeUpdate(Entity, { transactionCode, isDeleted: false },
 
 → "ORM 상태머신을 의도적으로 우회한다"는 선택이면 valid. 일반적인 단건 상태 갱신에는 (A)가 더 적게 바뀌고 훅/필터를 공짜로 유지한다. → [10. 벌크 연산](./10-bulk-operations.md) 참고.
 
-## 15.7 결론
+## 15.7 BaseRepository.save() 자체를 고친다면 — 조사 결과
+
+위 (A)/(B)는 **사용처** 수정이다. 그렇다면 commons `BaseRepository.save()` **자체**를 고쳐 어떤 호출에도 안전하게 만들 수 있을까? MikroORM 공식 문서/이슈 조사 + 이 레포 실측 결과를 정리한다.
+
+### upsert는 GENERATED ALWAYS PK에 설계상 맞지 않다 (버그 아님)
+
+`em.upsert`의 `onConflictFields / onConflictMergeFields / onConflictExcludeFields` 옵션은 전부 **충돌 시 UPDATE 절만** 조정한다. INSERT 절은 여전히 PK(id)를 실어 보내 → Postgres `GENERATED ALWAYS`가 거부한다. 또한 v7에서 **upsert가 `onCreate`/`onUpdate` 라이프사이클 훅을 우회**하는 변경이 보고됐다([#7399](https://github.com/mikro-orm/mikro-orm/issues/7399), PR #7400). 즉 commons Case3의 `em.upsert(entity)`는 "detached 저장"을 upsert로 흉내 낸 **오용**이다.
+
+### MikroORM 권장: detached 저장 자체를 피하라
+
+[공식 문서](https://mikro-orm.io/docs/unit-of-work)는 RequestContext/fork로 **managed 엔티티만** 다루기를 권장한다 (load → 수정 → flush = dirty-flush). 우회 대안들은 모두 함정:
+
+- `em.merge(entity)`: 재부착은 되지만 변경값을 적용하지 않는다(refresh=false 기본) → UPDATE 안 됨.
+- `wrap(managed).assign(entity)`: **초기화 안 된 컬렉션에서 크래시**(`Collection not initialized`). 스칼라만 담은 payload 로 assign 해도 cross-EM dirty 추적이 까다롭다(이 레포 13-1 실측: UPDATE 누락).
+
+### ✅ 깨끗한 commons-레벨 방법 — Case3가 아니라 Case1 가드를 고친다
+
+버그의 본질은 "fork-split 엔티티의 `__em`이 부모(EM_req)를 가리켜 detached로 **오판**"되는 것이다. 그런데 그 엔티티는 `fork(clear:false)`로 **현재 EM의 UnitOfWork에 이미 등록**돼 있다(그래서 dirty-flush가 된다). 따라서 Case1 가드를 **포인터 동일성**이 아니라 **UoW 멤버십**으로 바꾸면 된다:
+
+```typescript
+// 기존: __em 포인터 비교 → fork-split 에서 깨짐
+if (wrapped.__managed && wrapped.__em === em) return entity;
+
+// 수정: "현재 EM 의 UnitOfWork 에 이 인스턴스가 있나" (멤버십)
+const inThisUow =
+  wrapped.hasPrimaryKey() &&
+  em.getUnitOfWork().getById(this.entityName, wrapped.getPrimaryKey()) === entity;
+if (wrapped.__managed && inThisUow) return entity;
+```
+
+이 레포 실측 (가드 수정 후 fork-split 버그 경로):
+
+- `__em(EM_req) ≠ ctxEm(M)` 인데도 **UoW 멤버로 인식 → dirty-flush**
+- 결과 SQL: upsert 가 아니라 **`update … where id=?`**
+- **`updatedAt` SET** — dirty-flush 라 `onUpdate` 훅 작동
+- assign 을 안 하므로 **컬렉션-안전**
+- 진짜 detached(다른 EM, UoW 에 없음)는 그대로 Case3 로 → **기존 동작 보존**
+
+→ Case3 merge 재작성(컬렉션 크래시 + cross-EM 난점)보다 훨씬 작고 안전한 수술이다. 다만 commons 전역 변경이므로 **전체 사용처 점검 + 회귀 매트릭스**를 동반한 별도 작업으로 가야 한다.
+
+| 레벨 | 방법 | 평가 |
+|------|------|------|
+| 사용처 | dirty-flush | 최소·안전·관용적 ✅ |
+| commons | **Case1 가드 = UoW 멤버십** | 검증됨·소규모·기존 동작 보존. 권장 |
+| commons | Case3 upsert → merge(assign) | 컬렉션 크래시 + cross-EM 난점 ❌ |
+
+> 출처: [MikroORM #7399 (upsert v7 동작 변경)](https://github.com/mikro-orm/mikro-orm/issues/7399) · [Unit of Work 문서](https://mikro-orm.io/docs/unit-of-work) · [UpsertOptions API](https://mikro-orm.io/api/core/interface/UpsertOptions) · [EntityManager merge/assign 문서](https://mikro-orm.io/docs/entity-manager)
+
+## 15.8 결론
 
 - **원인**: 한 요청 안 두 개의 `@Transactional`이 각자 fork를 뜨고, 그 사이 `mergeEntitiesToParent`가 엔티티 소속을 EM_req로 박아 → 두 번째 fork에선 "남의 것"으로 보인다.
 - **증상**: `save()`가 Case3 upsert로 빠짐 → PG `GENERATED ALWAYS` id INSERT 거부. (MySQL은 explicit id 허용이라 안 터짐 → 단일 EM 테스트로 재현 실패했던 이유)
-- **수정**: `save()` 제거(dirty-flush)가 최선. `nativeUpdate`는 면역이지만 `updatedAt`·soft-delete를 수동으로 떠안아야 한다.
+- **수정(사용처)**: `save()` 제거(dirty-flush)가 최선. `nativeUpdate`는 면역이지만 `updatedAt`·soft-delete를 수동으로 떠안아야 한다.
+- **수정(commons, 별도)**: `save()` Case1 가드를 `__em` 포인터 → **UoW 멤버십**으로 바꾸면 fork-split을 근본 해결한다 (§15.7). upsert→merge 재작성은 컬렉션 크래시로 비권장.
 
 ## 재현 방법
 
