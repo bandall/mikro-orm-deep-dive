@@ -56,6 +56,7 @@
 | -------------------------------- | ------------ | ---------------------------------- |
 | [13](./13-nestjs-integration.md) | NestJS 통합 설정 | MikroORM + NestJS 프로젝트를 어떻게 구성하는가? |
 | [14](./14-troubleshooting.md)    | 트러블슈팅 & FAQ  | 실전에서 자주 만나는 문제와 해결법은?              |
+| [15](./15-em-fork-split.md)      | EM fork split  | 두 @Transactional 사이에서 save()가 왜 upsert로 빠지는가? |
 
 
 ## 부록
