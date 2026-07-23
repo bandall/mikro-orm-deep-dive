@@ -4,3 +4,4 @@ temp/
 
 *.log
 .DS_Store
+.vscode/

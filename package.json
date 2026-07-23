@@ -18,6 +18,7 @@
     "@mikro-orm/decorators": "^7.0.2",
     "@mikro-orm/mysql": "^7.0.2",
     "@mikro-orm/nestjs": "^7.0.1",
+    "@mikro-orm/postgresql": "^7.0.2",
     "@mikro-orm/reflection": "^7.0.2",
     "@nestjs/common": "^11.1.16",
     "@nestjs/core": "^11.1.16",

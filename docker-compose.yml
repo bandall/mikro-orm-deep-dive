@@ -7,3 +7,10 @@ services:
       MYSQL_ROOT_PASSWORD: test
       MYSQL_DATABASE: mikro_orm_test
     command: --default-authentication-plugin=mysql_native_password
+  postgres:
+    image: postgres:16
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: mikro_orm_test
