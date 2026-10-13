@@ -1,0 +1,7 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`28. readOnly 트랜잭션 × 비동기·장애 > 28-2: readOnly 안에서 시작해 커밋 뒤에 실행되는 쿼리(await 누락·setTimeout)는 어떻게 되나 1`] = `"error: Transaction is already committed"`;
+
+exports[`28. readOnly 트랜잭션 × 비동기·장애 > 28-3: readOnly 안에서 등록한 콜백(이벤트 리스너 흉내)이 커밋 뒤 쓰면 primary 로 가지 않고 실패한다 1`] = `"error : Transaction is already committed"`;
+
+exports[`28. readOnly 트랜잭션 × 비동기·장애 > 28-3d: 커밋 뒤 콜백을 RequestContext.create 로 감싸도(리스너 관용 패턴) TransactionContext 가 우선해 실패한다 1`] = `"error: Transaction is already committed"`;

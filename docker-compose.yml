@@ -14,3 +14,22 @@ services:
     environment:
       POSTGRES_PASSWORD: test
       POSTGRES_DB: mikro_orm_test
+  # read replica 실험용 (scripts/replica-up.sh 로 기동·복제 구성)
+  mysql-primary:
+    image: mysql:8.0
+    profiles: [replica]
+    ports:
+      - "3317:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+      MYSQL_DATABASE: rr_test
+    command: --server-id=1 --log-bin=mysql-bin --gtid-mode=ON --enforce-gtid-consistency=ON
+  mysql-replica:
+    image: mysql:8.0
+    profiles: [replica]
+    ports:
+      - "3318:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+    # super_read_only 는 entrypoint 초기화를 막아서 기동 후 스크립트가 건다
+    command: --server-id=2 --gtid-mode=ON --enforce-gtid-consistency=ON

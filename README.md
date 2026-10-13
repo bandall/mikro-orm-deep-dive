@@ -35,6 +35,10 @@ docker compose up -d
 
 # 테스트 실행 (120개)
 npx vitest run
+
+# read replica 실험 (18장) — primary/replica 컨테이너를 따로 띄운다
+./scripts/replica-up.sh
+RR_TEST=1 npx vitest run test/read-replica
 ```
 
 ## 프로젝트 구조
@@ -46,6 +50,7 @@ npx vitest run
 │   │   ├── entities/        #   Author, Book 엔티티
 │   │   ├── repositories/    #   커스텀 레포지토리
 │   │   └── services/        #   Outer/Inner 서비스 (트랜잭션 전파 테스트용)
+│   ├── read-replica/        # readOnly 트랜잭션을 reader 로 보내는 드라이버 (18장)
 │   └── jpa-compat/          # JPA 호환 레이어
 │       ├── base.repository.ts        # BaseRepository (save, delete, findById 등)
 │       ├── transactional.decorator.ts # 커스텀 @Transactional()
@@ -55,7 +60,8 @@ npx vitest run
 │       └── services/        #   UserService, OrderService
 └── test/
     ├── behavior/            # 78개 — ORM 핵심 동작 테스트
-    └── jpa-compat/          # 26개 — JPA 호환 레이어 테스트
+    ├── jpa-compat/          # 26개 — JPA 호환 레이어 테스트
+    └── read-replica/        # 29개 — primary/replica 실분리 라우팅 (RR_TEST=1)
 ```
 
 ## 목차
@@ -103,6 +109,7 @@ npx vitest run
 |---|------|----------|
 | [13](./docs/13-nestjs-integration.md) | NestJS 통합 설정 | MikroORM + NestJS 프로젝트를 어떻게 구성하는가? |
 | [14](./docs/14-troubleshooting.md) | 트러블슈팅 & FAQ | 실전에서 자주 만나는 문제와 해결법은? |
+| [18](./docs/18-read-replica-readonly-transaction.md) | readOnly 트랜잭션 → read replica | 전파·identity map·비동기 경계에서 쿼리는 어디로 가고 무엇이 깨지는가? |
 
 ### 부록
 
